@@ -86,13 +86,10 @@ class TestExecute(unittest.TestCase):
         self.assertEqual(run(s, "INFO memory"), "used_memory:10\nmaxmemory:10\nevicted_keys:1")
         self.assertEqual(run(s, "GET a"), "(nil)")
 
-    def test_keys_lists_numbered_lines(self):
+    def test_keys_lists_numbered_lines_in_sorted_order(self):
         s = self.s
-        run(s, "SET a 1"); run(s, "SET b 2")
-        lines = run(s, "KEYS").split("\n")
-        self.assertEqual(len(lines), 2)
-        self.assertEqual(sorted(l[3:] for l in lines), ['"a"', '"b"'])
-        self.assertEqual(sorted(l[:3] for l in lines), ["1. ", "2. "])
+        for k in ["user:3", "user:1", "user:2"]: run(s, f"SET {k} v")
+        self.assertEqual(run(s, "KEYS"), '1. "user:1"\n2. "user:2"\n3. "user:3"')   # 해시 순서와 무관하게 늘 같은 순서
 
     def test_values_with_quotes_and_backslashes_round_trip(self):
         s = self.s
@@ -100,7 +97,7 @@ class TestExecute(unittest.TestCase):
         self.assertEqual(run(s, "GET k"), '"say \\"hi\\" \\\\ ok"')
         self.assertEqual(run(s, 'SET "my key" "한 글"'), "OK")
         self.assertEqual(run(s, 'GET "my key"'), '"한 글"')
-        self.assertEqual(sorted(l[3:] for l in run(s, "KEYS").split("\n")), ['"k"', '"my key"'])
+        self.assertEqual(run(s, "KEYS"), '1. "k"\n2. "my key"')
 
     def test_empty_value(self):
         self.assertEqual(run(self.s, 'SET k ""'), "OK")
