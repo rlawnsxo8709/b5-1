@@ -31,13 +31,13 @@ answers/                     ← 이 폴더가 곧 rlawnsxo8709/b5-1 저장소�
 │   ├── errors.py            OOMError
 │   ├── parser.py            tokenize (큰따옴표 값, 이스케이프)
 │   └── cli.py               execute(명령 테이블 + 출력 포맷), repl
-├── tests/                   단위 + E2E + AST 제약 검사 (표준 unittest, 84개)
+├── tests/                   단위 + E2E + AST 제약 검사 (표준 unittest, 87개)
 ├── README.md                사용 가이드 · 실제 실행 세션 · 요구사항 체크리스트 · 검증 결과
 ├── EXPLAIN.md               과제 목표 4문항 + 평가 문항 Q0~Q17 답변
 └── PLAN.md                  이 문서
 ```
 
-의존 방향은 `cli → store → (hashmap → dlist), dlist, minheap` 한 방향이다. 자료구조 모듈은 서로를 모르고, `hashmap`만 `dlist`를 버킷으로 재사용한다.
+의존은 import 기준으로 `cli → store, parser, hashmap, errors`(명령 테이블에 `HashMap`을 직접 쓴다), `store → hashmap, dlist, minheap, errors`, `hashmap → dlist` 한 방향이고 순환이 없다. 자료구조 모듈은 서로를 모르고, `hashmap`만 `dlist`를 버킷으로 재사용한다.
 
 ## 3. 핵심 설계 결정
 
@@ -58,7 +58,7 @@ answers/                     ← 이 폴더가 곧 rlawnsxo8709/b5-1 저장소�
 | 시계 | `MiniRedisStore(clock=time.time)`로 주입 | 테스트가 시간을 조작해 3초 대기 없이 만료를 검증한다 |
 | KEYS 출력 | 미션 예시 형식 `1. "key"`, 비면 `(empty array)`. **정렬해서** 출력 | 순서는 요구되지 않지만, 해시 순서에 기대면 확장 시 출력이 달라진다 |
 | 명령 분기 | 직접 만든 `HashMap`에 `"SET" → _Command` 등록, 이름은 대소문자 무시 | 내장 dict 금지 제약을 명령 표에도 지킨다. 에러 메시지엔 입력한 이름을 그대로 쓴다 |
-| 정수 파싱 | 부호 `-`와 ASCII 숫자만, 64bit 범위. 음수 maxmemory는 정수 오류 | `int()`는 `+5`, `1_0`, 유니코드 숫자도 받아서 Redis와 달라진다 |
+| 정수 파싱 | 부호 `-`와 ASCII 숫자만, 64bit 범위(숫자 19자리 초과는 변환 전에 거절). 음수 maxmemory는 정수 오류 | `int()`는 `+5`, `1_0`, 유니코드 숫자도 받아서 Redis와 달라지고, 4300자리를 넘는 문자열에는 ValueError를 내서 REPL이 죽는다 |
 | 따옴표 | `\"` · `\\`만 해석, 토큰 첫 글자의 `"`만 따옴표 시작, 미닫힘은 ParseError | 미션 최소 요구(공백 없는 값 / 큰따옴표 값)보다 조금 넓게, 모호한 입력은 오류로 거절 |
 | REPL | 빈 줄 무시, `exit`/`quit` → `Bye`, EOF·Ctrl-C → 줄바꿈 후 정상 종료, 입력이 TTY가 아니어도 프롬프트 출력 | 예외 트레이스백 없이 종료. 단순하게 유지 |
 

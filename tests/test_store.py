@@ -69,7 +69,11 @@ class TestStore(unittest.TestCase):
 
     def test_delete_clears_ttl(self):
         s = self.s; s.set("a", "1"); s.expire("a", 5); s.delete("a"); s.set("a", "2")
-        self.clock.t += 10; self.assertEqual(s.get("a"), "2")   # 예전 힙 엔트리가 새 키를 지우면 안 됨
+        self.clock.t += 10
+        # get() 은 그 키만 확인하므로 힙을 타지 않는다. dbsize() 가 힙 정리 경로(_purge_expired_all)를
+        # 거쳐야 "예전 힙 기록이 새 키를 지우지 않는다"는 판별이 실제로 검증된다.
+        self.assertEqual(s.dbsize(), 1)
+        self.assertEqual(s.keys(), ["a"]); self.assertEqual(s.get("a"), "2")
 
     def test_lowering_maxmemory_evicts_immediately(self):
         s = self.s

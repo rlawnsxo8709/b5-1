@@ -17,6 +17,7 @@ _ERR_INTEGER = "ERR value is not an integer or out of range"
 _ERR_OOM = "OOM command not allowed when used_memory > 'maxmemory'"
 _INT_MIN = -(2 ** 63)
 _INT_MAX = 2 ** 63 - 1
+_INT_MAX_DIGITS = len(str(_INT_MAX))   # 19
 
 
 class _CommandError(Exception):
@@ -43,6 +44,10 @@ def _parse_int(text):
     """Redis처럼 엄격하게 정수로 바꾼다. 부호는 `-`만, 숫자는 ASCII 0-9만, 64bit 범위 안이어야 한다."""
     body = text[1:] if text.startswith("-") else text
     if body == "" or not all(ch in "0123456789" for ch in body):
+        raise _CommandError(_ERR_INTEGER)
+    # 64bit 최댓값 9223372036854775807이 19자리다. 그보다 길면 범위 밖이 확실하고,
+    # 4300자리를 넘는 문자열은 int()가 ValueError를 내므로 변환 전에 걸러야 REPL이 죽지 않는다.
+    if len(body) > _INT_MAX_DIGITS:
         raise _CommandError(_ERR_INTEGER)
     number = int(text)
     if number < _INT_MIN or number > _INT_MAX:
