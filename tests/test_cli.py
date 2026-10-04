@@ -70,6 +70,20 @@ class TestExecute(unittest.TestCase):
         self.assertEqual(execute(s, ["EXPIRE", "k", "-5"]), "(integer) 1")      # 음수 seconds 는 즉시 만료
         self.assertEqual(run(s, "EXISTS k"), "(integer) 0")
 
+    def test_huge_digit_strings_are_range_errors_not_crashes(self):
+        s = self.s; err = "(error) ERR value is not an integer or out of range"
+        for text in ["9" * 5000, "-" + "9" * 5000, "9" * 20, "0" * 5000 + "1"]:   # 4300자리 초과는 int() 가 ValueError 를 낸다
+            self.assertEqual(execute(s, ["EXPIRE", "k", text]), err, text[:12])
+            self.assertEqual(execute(s, ["CONFIG", "SET", "maxmemory", text]), err, text[:12])
+
+    def test_integer_64bit_boundaries(self):
+        s = self.s; err = "(error) ERR value is not an integer or out of range"
+        self.assertEqual(execute(s, ["CONFIG", "SET", "maxmemory", "9223372036854775807"]), "OK")      # 2**63 - 1
+        self.assertEqual(execute(s, ["CONFIG", "SET", "maxmemory", "9223372036854775808"]), err)       # 2**63
+        run(s, "SET k v")
+        self.assertEqual(execute(s, ["EXPIRE", "k", "-9223372036854775808"]), "(integer) 1")           # -2**63
+        self.assertEqual(execute(s, ["EXPIRE", "k", "-9223372036854775809"]), err)
+
     def test_config_set_variants(self):
         s = self.s
         self.assertEqual(run(s, "config set MAXMEMORY 10"), "OK")
@@ -132,6 +146,12 @@ class TestReplInProcess(unittest.TestCase):
         code, out = self.go('SET a "abc\nSET a 1\nGET a\n')
         self.assertIn("(error) ERR Protocol error: unbalanced quotes in request\n", out)
         self.assertIn('"1"\n', out)
+
+    def test_huge_integer_argument_does_not_crash_the_repl(self):
+        code, out = self.go("EXPIRE k " + "9" * 5000 + "\nCONFIG SET maxmemory " + "9" * 5000 + "\nSET a 1\nquit\n")
+        self.assertEqual(code, 0)
+        self.assertEqual(out.count("(error) ERR value is not an integer or out of range\n"), 2)
+        self.assertTrue(out.endswith("mini-redis> OK\nmini-redis> Bye\n"))
 
     def test_uses_given_store(self):
         s = MiniRedisStore(); s.set("pre", "set")
