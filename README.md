@@ -12,7 +12,7 @@
 | 미사용 검증 | `tests/test_constraints.py`가 `ast`로 소스를 파싱해 dict/set 리터럴·컴프리헨션, `dict()`/`set()`/`frozenset()` 호출, `collections` import가 0개임을 확인한다 ([검증](#검증)) |
 | 테스트 | 87개, 전부 통과 |
 
-설계 결정은 [PLAN.md](PLAN.md), 과제 목표와 평가 문항(Q0~Q17) 답변은 [EXPLAIN.md](EXPLAIN.md)에 있다.
+설계 결정은 [PLAN.md](PLAN.md)에 있다.
 
 ---
 
@@ -236,7 +236,6 @@ mini_redis/
 └── cli.py               execute(명령 테이블=HashMap, 출력 포맷), repl
 tests/                   표준 unittest 87개
 PLAN.md                  설계 결정
-EXPLAIN.md               과제 목표 + 평가 문항 답변
 ```
 
 의존 방향(import 기준): `cli → store, parser, hashmap, errors` · `store → hashmap, dlist, minheap, errors` · `hashmap → dlist`. `dlist` · `minheap` · `parser` · `errors`는 다른 모듈을 import하지 않는다.

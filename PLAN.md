@@ -7,7 +7,7 @@
 해시맵·이중 연결 리스트·최소 힙을 **내장 `dict`/`set`/`collections` 없이** 직접 만들고,
 그 위에 LRU 제거와 TTL 만료가 동작하는 CLI Mini Redis(`python3 main.py`)를 완성한다.
 
-다음 네 가지를 구현 코드에서 바로 짚어 설명할 수 있어야 한다. (답변은 [EXPLAIN.md](EXPLAIN.md))
+다음 네 가지를 구현 코드에서 바로 짚어 설명할 수 있어야 한다.
 
 1. 해시 함수와 체이닝으로 충돌을 푸는 방식
 2. 해시맵 + 이중 연결 리스트로 LRU 추적이 O(1)인 이유
@@ -33,7 +33,6 @@ answers/                     ← 이 폴더가 곧 rlawnsxo8709/b5-1 저장소�
 │   └── cli.py               execute(명령 테이블 + 출력 포맷), repl
 ├── tests/                   단위 + E2E + AST 제약 검사 (표준 unittest, 87개)
 ├── README.md                사용 가이드 · 실제 실행 세션 · 요구사항 체크리스트 · 검증 결과
-├── EXPLAIN.md               과제 목표 4문항 + 평가 문항 Q0~Q17 답변
 └── PLAN.md                  이 문서
 ```
 
