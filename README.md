@@ -10,7 +10,7 @@
 | 외부 라이브러리 | **없음** (`math`, `time`, `sys`만 사용. 테스트는 표준 `unittest`) |
 | 금지 자료형 | `dict` · `set` · `frozenset` · `collections` **미사용** |
 | 미사용 검증 | `tests/test_constraints.py`가 `ast`로 소스를 파싱해 dict/set 리터럴·컴프리헨션, `dict()`/`set()`/`frozenset()` 호출, `collections` import가 0개임을 확인한다 ([검증](#검증)) |
-| 테스트 | 84개, 전부 통과 |
+| 테스트 | 87개, 전부 통과 |
 
 설계 결정은 [PLAN.md](PLAN.md), 과제 목표와 평가 문항(Q0~Q17) 답변은 [EXPLAIN.md](EXPLAIN.md)에 있다.
 
@@ -77,7 +77,7 @@ printf 'SET a 1\nGET a\nquit\n' | python3 main.py
 | 큰따옴표가 닫히지 않음 | `(error) ERR Protocol error: unbalanced quotes in request` |
 | 빈 줄 | 아무것도 출력하지 않고 프롬프트로 돌아간다 |
 
-정수는 Redis처럼 엄격하게 받는다. 부호는 `-`만, 숫자는 ASCII `0-9`만 허용하고, `1.5` · `+5` · `1_0` · `0x10` · 64bit 범위 밖의 값은 정수 오류다.
+정수는 Redis처럼 엄격하게 받는다. 부호는 `-`만, 숫자는 ASCII `0-9`만 허용하고, `1.5` · `+5` · `1_0` · `0x10` · 64bit 범위 밖의 값은 정수 오류다. 숫자가 19자리(64bit 최댓값의 자릿수)를 넘으면 값을 계산하기 전에 범위 오류로 처리하므로, 아주 긴 숫자를 넣어도 프로그램이 죽지 않는다.
 
 ## 실제 실행 세션
 
@@ -234,12 +234,12 @@ mini_redis/
 ├── errors.py            OOMError
 ├── parser.py            tokenize — 큰따옴표 토크나이저
 └── cli.py               execute(명령 테이블=HashMap, 출력 포맷), repl
-tests/                   표준 unittest 84개
+tests/                   표준 unittest 87개
 PLAN.md                  설계 결정
 EXPLAIN.md               과제 목표 + 평가 문항 답변
 ```
 
-의존 방향: `cli → store → (hashmap → dlist), dlist, minheap`.
+의존 방향(import 기준): `cli → store, parser, hashmap, errors` · `store → hashmap, dlist, minheap, errors` · `hashmap → dlist`. `dlist` · `minheap` · `parser` · `errors`는 다른 모듈을 import하지 않는다.
 
 ## 요구사항 체크리스트
 
@@ -266,7 +266,7 @@ EXPLAIN.md               과제 목표 + 평가 문항 답변
 | 가득 찬 상태에서 덮어써도 방금 쓴 키 유지 | `store.py:set` | `test_store: test_overwrite_on_full_memory_evicts_others_never_the_written_key` |
 | 한도를 낮추면 즉시 제거 | `store.py:set_maxmemory` | `test_store: test_lowering_maxmemory_evicts_immediately` |
 | TTL 힙의 낡은 기록(lazy deletion) | `store.py:_purge_expired_all` | `test_store: test_reexpire_uses_latest_deadline_not_stale_heap_entry`, `test_expire_then_shorter_expire_fires_at_new_deadline` |
-| 에러 표준 5종 + 따옴표 오류 | `cli.py:execute`, `parser.py:tokenize` | `test_cli: test_errors`, `test_wrong_number_of_arguments_for_every_command`, `test_integer_parsing_is_strict`, `test_unbalanced_quotes_in_repl` |
+| 에러 표준 5종 + 따옴표 오류 | `cli.py:execute`, `parser.py:tokenize` | `test_cli: test_errors`, `test_wrong_number_of_arguments_for_every_command`, `test_integer_parsing_is_strict`, `test_huge_digit_strings_are_range_errors_not_crashes`, `test_huge_integer_argument_does_not_crash_the_repl`, `test_unbalanced_quotes_in_repl` |
 | 따옴표 값 / 공백 없는 값 | `parser.py:tokenize` | `test_parser` 8개 |
 | 미션 예시 시나리오 재현 | — | `test_cli: test_mission_example_session`, `test_store: test_mission_example_lru_eviction` |
 | `dict`·`set`·`collections` 금지 | 전 모듈 | `test_constraints: test_no_builtin_dict_set_collections` |
@@ -289,20 +289,20 @@ python3 -m unittest discover -s tests -t . -v
 | `tests/test_minheap.py` | 7 | 최소 힙 |
 | `tests/test_store.py` | 26 | LRU · TTL · 메모리 |
 | `tests/test_parser.py` | 8 | 토크나이저 |
-| `tests/test_cli.py` | 24 | 명령 출력·에러·REPL(in-process + subprocess) |
+| `tests/test_cli.py` | 27 | 명령 출력·에러·REPL(in-process + subprocess) |
 | `tests/test_constraints.py` | 1 | 금지 자료형 AST 검사 |
-| 합계 | **84** | |
+| 합계 | **87** | |
 
 실제 실행 결과(Python 3.13.11):
 
 ```text
 ----------------------------------------------------------------------
-Ran 84 tests in 0.071s
+Ran 87 tests in 0.113s
 
 OK
 ```
 
-Python 3.12.3에서도 같은 명령으로 84개가 통과했다.
+Python 3.12.3에서도 같은 명령으로 87개가 통과했다.
 
 ### 금지 자료형 미사용 확인
 
