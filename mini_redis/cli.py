@@ -153,7 +153,7 @@ def repl(stdin=sys.stdin, stdout=sys.stdout, store=None):
     """프롬프트를 띄우고 한 줄씩 읽어 실행한다. 종료 코드 0을 돌려준다.
 
     `exit`/`quit`이면 `Bye`를 출력하고 끝낸다. EOF(Ctrl-D, 파이프 끝)와 Ctrl-C는
-    줄바꿈만 출력하고 예외 없이 끝낸다. 빈 줄은 무시한다.
+    줄바꿈만 출력하고 예외 없이 끝낸다. 빈 줄은 무시하고, UTF-8이 아닌 줄은 에러를 출력하고 넘어간다.
     """
     if store is None:
         store = MiniRedisStore()
@@ -169,6 +169,12 @@ def repl(stdin=sys.stdin, stdout=sys.stdout, store=None):
             stdout.write("\n")
             return 0
         try:
+            line.encode("utf-8")
+        except UnicodeEncodeError:
+            # 잘못된 바이트는 짝 없는 서로게이트로 들어온다. 키·값 크기와 해시는 UTF-8 바이트로 계산하므로 줄째로 거절한다
+            stdout.write("(error) ERR invalid UTF-8 input\n")
+            continue
+        try:
             tokens = tokenize(line)
         except ParseError as error:
             stdout.write(f"(error) ERR Protocol error: {error}\n")
@@ -183,4 +189,7 @@ def repl(stdin=sys.stdin, stdout=sys.stdout, store=None):
 
 def main():
     """`python3 main.py`와 `python3 -m mini_redis`의 공통 진입점."""
+    # 기본 설정(strict)이면 잘못된 바이트 하나에 readline()이 UnicodeDecodeError로 죽는다.
+    # surrogateescape로 읽어 두면 repl이 그 줄만 에러로 처리하고 계속 진행한다.
+    sys.stdin.reconfigure(errors="surrogateescape")
     return repl()

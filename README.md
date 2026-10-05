@@ -6,11 +6,11 @@
 | | |
 |---|---|
 | 실행 | `python3 main.py` (또는 `python3 -m mini_redis`) |
-| 개발 환경 | 미션 요구 Python 3.8 이상 · 실행 검증 3.13.11, 3.12.3 (Linux). 3.8 실행은 해 보지 못했고, 모든 파일이 3.8 문법으로 파싱되는 것만 확인했다 |
+| 개발 환경 | 미션 요구 Python 3.8 이상 · 실행 검증 3.13.11, 3.12.3 (Linux), 3.12.13 (macOS). 3.8 실행은 해 보지 못했고, 모든 파일이 3.8 문법으로 파싱되는 것만 확인했다 |
 | 외부 라이브러리 | **없음** (`math`, `time`, `sys`만 사용. 테스트는 표준 `unittest`) |
 | 금지 자료형 | `dict` · `set` · `frozenset` · `collections` **미사용** |
 | 미사용 검증 | `tests/test_constraints.py`가 `ast`로 소스를 파싱해 dict/set 리터럴·컴프리헨션, `dict()`/`set()`/`frozenset()` 호출, `collections` import가 0개임을 확인한다 ([검증](#검증)) |
-| 테스트 | 87개, 전부 통과 |
+| 테스트 | 89개, 전부 통과 |
 
 설계 결정은 [PLAN.md](PLAN.md)에 있다.
 
@@ -76,6 +76,7 @@ printf 'SET a 1\nGET a\nquit\n' | python3 main.py
 | `CONFIG SET`의 알 수 없는 항목 | `(error) ERR Unsupported CONFIG parameter: <param>` |
 | 큰따옴표가 닫히지 않음 | `(error) ERR Protocol error: unbalanced quotes in request` |
 | 빈 줄 | 아무것도 출력하지 않고 프롬프트로 돌아간다 |
+| UTF-8이 아닌 바이트가 든 줄 | `(error) ERR invalid UTF-8 input` (그 줄만 거절하고 계속 진행) |
 
 정수는 Redis처럼 엄격하게 받는다. 부호는 `-`만, 숫자는 ASCII `0-9`만 허용하고, `1.5` · `+5` · `1_0` · `0x10` · 64bit 범위 밖의 값은 정수 오류다. 숫자가 19자리(64bit 최댓값의 자릿수)를 넘으면 값을 계산하기 전에 범위 오류로 처리하므로, 아주 긴 숫자를 넣어도 프로그램이 죽지 않는다.
 
@@ -219,6 +220,7 @@ mini-redis>
 | 따옴표 이스케이프 | `\"` · `\\`만 해석하고 `\n` 같은 나머지는 그대로 둔다. 닫는 따옴표 바로 뒤에 글자가 오면 따옴표 오류다 |
 | `GET`/`KEYS` 출력의 따옴표 | 값 안의 `"`와 `\`는 입력 규칙과 같게 `\"` · `\\`로 출력한다 |
 | 입력이 터미널이 아닐 때 | 프롬프트를 그대로 출력한다(단순하게 유지) |
+| UTF-8이 아닌 입력 | 표준 입력을 `surrogateescape`로 읽고, UTF-8로 인코딩할 수 없는 줄은 통째로 에러 처리한다. 대체 문자(`�`)로 바꾸면 서로 다른 바이트열이 같은 키가 될 수 있어서다 |
 
 ## 폴더 구조
 
@@ -234,7 +236,7 @@ mini_redis/
 ├── errors.py            OOMError
 ├── parser.py            tokenize — 큰따옴표 토크나이저
 └── cli.py               execute(명령 테이블=HashMap, 출력 포맷), repl
-tests/                   표준 unittest 87개
+tests/                   표준 unittest 89개
 PLAN.md                  설계 결정
 ```
 
@@ -265,7 +267,7 @@ PLAN.md                  설계 결정
 | 가득 찬 상태에서 덮어써도 방금 쓴 키 유지 | `store.py:set` | `test_store: test_overwrite_on_full_memory_evicts_others_never_the_written_key` |
 | 한도를 낮추면 즉시 제거 | `store.py:set_maxmemory` | `test_store: test_lowering_maxmemory_evicts_immediately` |
 | TTL 힙의 낡은 기록(lazy deletion) | `store.py:_purge_expired_all` | `test_store: test_reexpire_uses_latest_deadline_not_stale_heap_entry`, `test_expire_then_shorter_expire_fires_at_new_deadline` |
-| 에러 표준 5종 + 따옴표 오류 | `cli.py:execute`, `parser.py:tokenize` | `test_cli: test_errors`, `test_wrong_number_of_arguments_for_every_command`, `test_integer_parsing_is_strict`, `test_huge_digit_strings_are_range_errors_not_crashes`, `test_huge_integer_argument_does_not_crash_the_repl`, `test_unbalanced_quotes_in_repl` |
+| 에러 표준 5종 + 따옴표 오류 + UTF-8 입력 오류 | `cli.py:execute`, `cli.py:repl`, `parser.py:tokenize` | `test_cli: test_errors`, `test_wrong_number_of_arguments_for_every_command`, `test_integer_parsing_is_strict`, `test_huge_digit_strings_are_range_errors_not_crashes`, `test_huge_integer_argument_does_not_crash_the_repl`, `test_unbalanced_quotes_in_repl`, `test_line_that_is_not_valid_utf8_is_rejected_without_stopping`, `test_invalid_utf8_bytes_do_not_crash_the_repl` |
 | 따옴표 값 / 공백 없는 값 | `parser.py:tokenize` | `test_parser` 8개 |
 | 미션 예시 시나리오 재현 | — | `test_cli: test_mission_example_session`, `test_store: test_mission_example_lru_eviction` |
 | `dict`·`set`·`collections` 금지 | 전 모듈 | `test_constraints: test_no_builtin_dict_set_collections` |
@@ -288,20 +290,20 @@ python3 -m unittest discover -s tests -t . -v
 | `tests/test_minheap.py` | 7 | 최소 힙 |
 | `tests/test_store.py` | 26 | LRU · TTL · 메모리 |
 | `tests/test_parser.py` | 8 | 토크나이저 |
-| `tests/test_cli.py` | 27 | 명령 출력·에러·REPL(in-process + subprocess) |
+| `tests/test_cli.py` | 29 | 명령 출력·에러·REPL(in-process + subprocess) |
 | `tests/test_constraints.py` | 1 | 금지 자료형 AST 검사 |
-| 합계 | **87** | |
+| 합계 | **89** | |
 
-실제 실행 결과(Python 3.13.11):
+실제 실행 결과(Python 3.12.13, macOS):
 
 ```text
 ----------------------------------------------------------------------
-Ran 87 tests in 0.113s
+Ran 89 tests in 0.223s
 
 OK
 ```
 
-Python 3.12.3에서도 같은 명령으로 87개가 통과했다.
+UTF-8 입력 수정 전의 87개는 Python 3.13.11 · 3.12.3(Linux)에서도 같은 명령으로 통과했다.
 
 ### 금지 자료형 미사용 확인
 

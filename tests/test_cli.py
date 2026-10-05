@@ -153,6 +153,16 @@ class TestReplInProcess(unittest.TestCase):
         self.assertEqual(out.count("(error) ERR value is not an integer or out of range\n"), 2)
         self.assertTrue(out.endswith("mini-redis> OK\nmini-redis> Bye\n"))
 
+    def test_line_that_is_not_valid_utf8_is_rejected_without_stopping(self):
+        # surrogateescape로 읽은 잘못된 바이트(0xff 0xfe)는 짝 없는 서로게이트가 되어 UTF-8로 인코딩할 수 없다
+        s = MiniRedisStore()
+        code, out = self.go("SET a \udcff\udcfe\nSET \udcff v\nSET b 1\nGET b\nquit\n", store=s)
+        self.assertEqual(code, 0)
+        self.assertEqual(out, "mini-redis> (error) ERR invalid UTF-8 input\n"
+                              "mini-redis> (error) ERR invalid UTF-8 input\n"
+                              'mini-redis> OK\nmini-redis> "1"\nmini-redis> Bye\n')
+        self.assertEqual((s.dbsize(), s.info_memory()[0]), (1, 2))   # 거절된 줄은 아무것도 저장하지 않는다
+
     def test_uses_given_store(self):
         s = MiniRedisStore(); s.set("pre", "set")
         _, out = self.go("GET pre\n", store=s)
@@ -179,6 +189,13 @@ class TestRepl(unittest.TestCase):
     def test_unbalanced_quotes_in_repl(self):
         p = self.repl('SET a "abc\nEXIT\n')
         self.assertIn("(error) ERR Protocol error: unbalanced quotes in request", p.stdout)
+    def test_invalid_utf8_bytes_do_not_crash_the_repl(self):
+        # UTF8_ENV는 표준 입력을 엄격한 UTF-8로 연다. 수정 전에는 readline()이 UnicodeDecodeError로 죽었다
+        p = subprocess.run([sys.executable, "main.py"], input=b'SET a \xff\xfe\nSET b "\xea\xb0\x92"\nGET b\nquit\n',
+                           capture_output=True, env=UTF8_ENV, cwd=ROOT, timeout=10)
+        self.assertEqual(p.returncode, 0); self.assertEqual(p.stderr, b"")
+        self.assertEqual(p.stdout.decode("utf-8"), 'mini-redis> (error) ERR invalid UTF-8 input\n'
+                                                   'mini-redis> OK\nmini-redis> "값"\nmini-redis> Bye\n')
 
     def test_module_entry_point_and_korean_value(self):
         p = subprocess.run([sys.executable, "-m", "mini_redis"], input='SET 키 "값 값"\nGET 키\nINFO memory\nquit\n',
