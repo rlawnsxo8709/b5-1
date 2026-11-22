@@ -1,8 +1,6 @@
 """입력 한 줄을 토큰 리스트로 나누는 파서."""
 
-
-class ParseError(Exception):
-    """따옴표가 닫히지 않는 등 줄을 토큰으로 나눌 수 없을 때 발생한다."""
+from mini_redis.errors import ParseError
 
 
 def tokenize(line):
