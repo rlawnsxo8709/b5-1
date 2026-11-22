@@ -12,7 +12,7 @@
 | 미사용 검증 | `tests/test_constraints.py`가 `ast`로 소스를 파싱해 dict/set 리터럴·컴프리헨션, `dict()`/`set()`/`frozenset()` 호출, `collections` import가 0개임을 확인한다 ([검증](#검증)) |
 | 테스트 | unittest 92개 전부 통과 + 기능 요구 사항 실행 로그(`tests/logs/`) |
 
-설계 결정은 [PLAN.md](PLAN.md)에 있다.
+설계 결정은 [PLAN.md](PLAN.md)에, 해시 함수와 체이닝을 그림으로 정리한 글은 [docs/hash-chaining.md](docs/hash-chaining.md)에 있다.
 
 ---
 
@@ -242,6 +242,7 @@ mini_redis/
 └── cli.py               execute(명령 테이블=HashMap, 출력 포맷), repl
 tests/                   표준 unittest 92개 + test_requirements.sh(기능 요구 사항 실행 로그 → tests/logs/)
 PLAN.md                  설계 결정
+docs/hash-chaining.md    해시 함수 → 칸 번호, 충돌과 체이닝(그림)
 ```
 
 의존 방향(import 기준): `cli → store, parser, hashmap, errors` · `store → hashmap, dlist, minheap, errors` · `parser → errors` · `hashmap → dlist`. `dlist` · `minheap` · `errors`는 다른 모듈을 import하지 않는다.
