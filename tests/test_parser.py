@@ -1,5 +1,6 @@
 import unittest
-from mini_redis.parser import tokenize, ParseError
+from mini_redis.errors import ParseError
+from mini_redis.parser import tokenize
 class TestTokenize(unittest.TestCase):
     def test_plain_and_quoted(self):
         self.assertEqual(tokenize('SET user:1 "Alice Kim"'), ["SET", "user:1", "Alice Kim"])

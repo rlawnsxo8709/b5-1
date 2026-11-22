@@ -28,15 +28,15 @@ answers/                     ← 이 폴더가 곧 rlawnsxo8709/b5-1 저장소�
 │   ├── hashmap.py           fnv1a_hash, HashMap (체이닝, 로드 팩터 0.75 초과 시 2배)
 │   ├── minheap.py           MinHeap (push/pop/peek/size, _heapify_up/_down)
 │   ├── store.py             MiniRedisStore — LRU · TTL · used_memory 엔진
-│   ├── errors.py            OOMError
+│   ├── errors.py            MiniRedisError와 오류 클래스(Redis 문구를 한곳에 모음)
 │   ├── parser.py            tokenize (큰따옴표 값, 이스케이프)
 │   └── cli.py               execute(명령 테이블 + 출력 포맷), repl
-├── tests/                   단위 + E2E + AST 제약 검사 (표준 unittest, 89개)
+├── tests/                   단위 + E2E + AST 제약 검사 (표준 unittest, 92개)
 ├── README.md                사용 가이드 · 실제 실행 세션 · 요구사항 체크리스트 · 검증 결과
 └── PLAN.md                  이 문서
 ```
 
-의존은 import 기준으로 `cli → store, parser, hashmap, errors`(명령 테이블에 `HashMap`을 직접 쓴다), `store → hashmap, dlist, minheap, errors`, `hashmap → dlist` 한 방향이고 순환이 없다. 자료구조 모듈은 서로를 모르고, `hashmap`만 `dlist`를 버킷으로 재사용한다.
+의존은 import 기준으로 `cli → store, parser, hashmap, errors`(명령 테이블에 `HashMap`을 직접 쓴다), `store → hashmap, dlist, minheap, errors`, `parser → errors`, `hashmap → dlist` 한 방향이고 순환이 없다. 자료구조 모듈은 서로를 모르고, `hashmap`만 `dlist`를 버킷으로 재사용한다.
 
 ## 3. 핵심 설계 결정
 
@@ -58,6 +58,7 @@ answers/                     ← 이 폴더가 곧 rlawnsxo8709/b5-1 저장소�
 | KEYS 출력 | 미션 예시 형식 `1. "key"`, 비면 `(empty array)`. **정렬해서** 출력 | 순서는 요구되지 않지만, 해시 순서에 기대면 확장 시 출력이 달라진다 |
 | 명령 분기 | 직접 만든 `HashMap`에 `"SET" → _Command` 등록, 이름은 대소문자 무시 | 내장 dict 금지 제약을 명령 표에도 지킨다. 에러 메시지엔 입력한 이름을 그대로 쓴다 |
 | 정수 파싱 | 부호 `-`와 ASCII 숫자만, 64bit 범위(숫자 19자리 초과는 변환 전에 거절). 음수 maxmemory는 정수 오류 | `int()`는 `+5`, `1_0`, 유니코드 숫자도 받아서 Redis와 달라지고, 4300자리를 넘는 문자열에는 ValueError를 내서 REPL이 죽는다 |
+| 오류 | `errors.py`에 공통 부모 `MiniRedisError`와 오류별 클래스. 문구는 클래스가 갖고, 던지는 쪽(store·parser·명령 처리 함수)은 사실만 알리며, cli가 `MiniRedisError` 하나만 잡아 `(error) `를 붙인다 | Redis 문구가 한 파일에 모여 대조하기 쉽고, 오류가 늘어도 cli의 `except`는 늘지 않는다. store는 화면 형식을 몰라 테스트에서 그대로 쓸 수 있다 |
 | 따옴표 | `\"` · `\\`만 해석, 토큰 첫 글자의 `"`만 따옴표 시작, 미닫힘은 ParseError | 미션 최소 요구(공백 없는 값 / 큰따옴표 값)보다 조금 넓게, 모호한 입력은 오류로 거절 |
 | REPL | 빈 줄 무시, `exit`/`quit` → `Bye`, EOF·Ctrl-C → 줄바꿈 후 정상 종료, 입력이 TTY가 아니어도 프롬프트 출력, UTF-8이 아닌 줄은 `ERR invalid UTF-8 input` 후 계속(표준 입력을 surrogateescape로 읽음) | 예외 트레이스백 없이 종료. 단순하게 유지 |
 

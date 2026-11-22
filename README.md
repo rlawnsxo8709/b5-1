@@ -10,7 +10,7 @@
 | 외부 라이브러리 | **없음** (`math`, `time`, `sys`만 사용. 테스트는 표준 `unittest`) |
 | 금지 자료형 | `dict` · `set` · `frozenset` · `collections` **미사용** |
 | 미사용 검증 | `tests/test_constraints.py`가 `ast`로 소스를 파싱해 dict/set 리터럴·컴프리헨션, `dict()`/`set()`/`frozenset()` 호출, `collections` import가 0개임을 확인한다 ([검증](#검증)) |
-| 테스트 | unittest 89개 전부 통과 + 기능 요구 사항 실행 로그(`tests/logs/`) |
+| 테스트 | unittest 92개 전부 통과 + 기능 요구 사항 실행 로그(`tests/logs/`) |
 
 설계 결정은 [PLAN.md](PLAN.md)에 있다.
 
@@ -74,9 +74,13 @@ printf 'SET a 1\nGET a\nquit\n' | python3 main.py
 | 정수 파싱 실패(음수 maxmemory 포함) | `(error) ERR value is not an integer or out of range` |
 | 엔트리 하나가 maxmemory보다 큼 | `(error) OOM command not allowed when used_memory > 'maxmemory'` |
 | `CONFIG SET`의 알 수 없는 항목 | `(error) ERR Unsupported CONFIG parameter: <param>` |
+| `CONFIG`의 `SET`이 아닌 하위 명령 | `(error) ERR unknown subcommand '<sub>' for 'CONFIG' command` |
+| `INFO`의 `memory`가 아닌 구역 | `(error) ERR Unsupported INFO section: <section>` |
 | 큰따옴표가 닫히지 않음 | `(error) ERR Protocol error: unbalanced quotes in request` |
 | 빈 줄 | 아무것도 출력하지 않고 프롬프트로 돌아간다 |
 | UTF-8이 아닌 바이트가 든 줄 | `(error) ERR invalid UTF-8 input` (그 줄만 거절하고 계속 진행) |
+
+위 문구는 모두 `mini_redis/errors.py` 한 파일에 있다. 오류마다 클래스가 있고(`UnknownCommandError`, `WrongArgsError`, `NotIntegerError`, `OOMError`, `ParseError` 등) 모두 `MiniRedisError`를 상속하며, `str(오류)`가 위 표의 문구 그대로다. 저장소(`store.py`)와 파서(`parser.py`)는 `OOMError`·`ParseError`를 던지기만 하고 화면 형식은 모른다. `cli.py`가 `MiniRedisError` 하나만 잡아 앞에 `(error) `를 붙여 출력한다.
 
 정수는 Redis처럼 엄격하게 받는다. 부호는 `-`만, 숫자는 ASCII `0-9`만 허용하고, `1.5` · `+5` · `1_0` · `0x10` · 64bit 범위 밖의 값은 정수 오류다. 숫자가 19자리(64bit 최댓값의 자릿수)를 넘으면 값을 계산하기 전에 범위 오류로 처리하므로, 아주 긴 숫자를 넣어도 프로그램이 죽지 않는다.
 
@@ -233,14 +237,14 @@ mini_redis/
 ├── hashmap.py           fnv1a_hash, HashMap — 체이닝(버킷=DoublyLinkedList), 로드 팩터 0.75 초과 시 2배
 ├── minheap.py           MinHeap — push/pop/peek/size, _heapify_up/_down
 ├── store.py             MiniRedisStore — LRU · TTL(힙 + lazy deletion) · used_memory
-├── errors.py            OOMError
+├── errors.py            MiniRedisError와 오류 클래스 — Redis 오류 문구를 한곳에 모음
 ├── parser.py            tokenize — 큰따옴표 토크나이저
 └── cli.py               execute(명령 테이블=HashMap, 출력 포맷), repl
-tests/                   표준 unittest 89개 + test_requirements.sh(기능 요구 사항 실행 로그 → tests/logs/)
+tests/                   표준 unittest 92개 + test_requirements.sh(기능 요구 사항 실행 로그 → tests/logs/)
 PLAN.md                  설계 결정
 ```
 
-의존 방향(import 기준): `cli → store, parser, hashmap, errors` · `store → hashmap, dlist, minheap, errors` · `hashmap → dlist`. `dlist` · `minheap` · `parser` · `errors`는 다른 모듈을 import하지 않는다.
+의존 방향(import 기준): `cli → store, parser, hashmap, errors` · `store → hashmap, dlist, minheap, errors` · `parser → errors` · `hashmap → dlist`. `dlist` · `minheap` · `errors`는 다른 모듈을 import하지 않는다.
 
 ## 요구사항 체크리스트
 
@@ -267,7 +271,7 @@ PLAN.md                  설계 결정
 | 가득 찬 상태에서 덮어써도 방금 쓴 키 유지 | `store.py:set` | `test_store: test_overwrite_on_full_memory_evicts_others_never_the_written_key` |
 | 한도를 낮추면 즉시 제거 | `store.py:set_maxmemory` | `test_store: test_lowering_maxmemory_evicts_immediately` |
 | TTL 힙의 낡은 기록(lazy deletion) | `store.py:_purge_expired_all` | `test_store: test_reexpire_uses_latest_deadline_not_stale_heap_entry`, `test_expire_then_shorter_expire_fires_at_new_deadline` |
-| 에러 표준 5종 + 따옴표 오류 + UTF-8 입력 오류 | `cli.py:execute`, `cli.py:repl`, `parser.py:tokenize` | `test_cli: test_errors`, `test_wrong_number_of_arguments_for_every_command`, `test_integer_parsing_is_strict`, `test_huge_digit_strings_are_range_errors_not_crashes`, `test_huge_integer_argument_does_not_crash_the_repl`, `test_unbalanced_quotes_in_repl`, `test_line_that_is_not_valid_utf8_is_rejected_without_stopping`, `test_invalid_utf8_bytes_do_not_crash_the_repl` |
+| 에러 표준 5종 + 따옴표 오류 + UTF-8 입력 오류 | `errors.py`(문구), `cli.py:execute`·`cli.py:repl`(출력), `parser.py:tokenize` | `test_errors` 3개, `test_cli: test_errors`, `test_wrong_number_of_arguments_for_every_command`, `test_integer_parsing_is_strict`, `test_huge_digit_strings_are_range_errors_not_crashes`, `test_huge_integer_argument_does_not_crash_the_repl`, `test_unbalanced_quotes_in_repl`, `test_line_that_is_not_valid_utf8_is_rejected_without_stopping`, `test_invalid_utf8_bytes_do_not_crash_the_repl` |
 | 따옴표 값 / 공백 없는 값 | `parser.py:tokenize` | `test_parser` 8개 |
 | 미션 예시 시나리오 재현 | — | `test_cli: test_mission_example_session`, `test_store: test_mission_example_lru_eviction` |
 | `dict`·`set`·`collections` 금지 | 전 모듈 | `test_constraints: test_no_builtin_dict_set_collections` |
@@ -291,19 +295,20 @@ python3 -m unittest discover -s tests -t . -v
 | `tests/test_store.py` | 26 | LRU · TTL · 메모리 |
 | `tests/test_parser.py` | 8 | 토크나이저 |
 | `tests/test_cli.py` | 29 | 명령 출력·에러·REPL(in-process + subprocess) |
+| `tests/test_errors.py` | 3 | 오류 문구·공통 부모·store/parser가 같은 클래스를 던지는지 |
 | `tests/test_constraints.py` | 1 | 금지 자료형 AST 검사 |
-| 합계 | **89** | |
+| 합계 | **92** | |
 
-실제 실행 결과(Python 3.12.13, macOS):
+실제 실행 결과(Python 3.13.12, Linux):
 
 ```text
 ----------------------------------------------------------------------
-Ran 89 tests in 0.223s
+Ran 92 tests in 0.128s
 
 OK
 ```
 
-UTF-8 입력 수정 전의 87개는 Python 3.13.11 · 3.12.3(Linux)에서도 같은 명령으로 통과했다.
+Python 3.12.3(Linux)에서도 92개가 통과했다. 오류 정리 전의 89개는 Python 3.12.13(macOS)에서, UTF-8 입력 수정 전의 87개는 Python 3.13.11 · 3.12.3(Linux)에서도 같은 명령으로 통과했다.
 
 ### 기능 요구 사항 실행 로그
 
@@ -319,7 +324,7 @@ bash tests/test_requirements.sh
 - TTL 만료는 실제로 기다려서 6초쯤 걸린다. 로그에 Traceback이 생기면 종료 코드 1로 끝난다.
 - 다른 인터프리터는 `PYTHON=python3.12 bash tests/test_requirements.sh`처럼 고른다.
 
-한 번 실행한 로그를 저장소에 함께 두었다: [`tests/logs/requirements_20261122-170317.log`](tests/logs/requirements_20261122-170317.log) (Python 3.13.12, Linux, 47개 항목). 일부를 옮기면 이렇다.
+실행한 로그를 저장소에 함께 두었다: [`tests/logs/requirements_20261122-171951.log`](tests/logs/requirements_20261122-171951.log) (Python 3.13.12, Linux, 47개 항목). 오류 클래스를 `errors.py`로 모으기 전에 뜬 [`requirements_20261122-170317.log`](tests/logs/requirements_20261122-170317.log)와 비교하면 `실행 시각:` 줄 말고는 한 글자도 다르지 않다. 일부를 옮기면 이렇다.
 
 ```text
 [LRU 제거 규칙] maxmemory > 0 이고 SET 이후 초과하면, maxmemory 이하가 될 때까지 LRU부터 제거
