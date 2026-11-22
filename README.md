@@ -10,7 +10,7 @@
 | 외부 라이브러리 | **없음** (`math`, `time`, `sys`만 사용. 테스트는 표준 `unittest`) |
 | 금지 자료형 | `dict` · `set` · `frozenset` · `collections` **미사용** |
 | 미사용 검증 | `tests/test_constraints.py`가 `ast`로 소스를 파싱해 dict/set 리터럴·컴프리헨션, `dict()`/`set()`/`frozenset()` 호출, `collections` import가 0개임을 확인한다 ([검증](#검증)) |
-| 테스트 | 89개, 전부 통과 |
+| 테스트 | unittest 89개 + 기능 요구 사항 셸 시험 33개, 전부 통과 |
 
 설계 결정은 [PLAN.md](PLAN.md)에 있다.
 
@@ -236,7 +236,7 @@ mini_redis/
 ├── errors.py            OOMError
 ├── parser.py            tokenize — 큰따옴표 토크나이저
 └── cli.py               execute(명령 테이블=HashMap, 출력 포맷), repl
-tests/                   표준 unittest 89개
+tests/                   표준 unittest 89개 + test_requirements.sh(기능 요구 사항 셸 시험)
 PLAN.md                  설계 결정
 ```
 
@@ -304,6 +304,59 @@ OK
 ```
 
 UTF-8 입력 수정 전의 87개는 Python 3.13.11 · 3.12.3(Linux)에서도 같은 명령으로 통과했다.
+
+### 기능 요구 사항 셸 시험
+
+```bash
+bash tests/test_requirements.sh
+```
+
+미션 문서 「기능 요구 사항」 1~5절을 항목 순서대로 실제로 돌린다. 시험 이름 앞 번호(1-1, 2-3 …)가 그 절과 항목 순서다. 자료구조(1절)는 모듈을 직접 불러 결과를 확인하고, 명령(2~5절)은 `python3 main.py`에 명령을 파이프로 넣어 출력을 기대값과 줄 단위로 비교한다. TTL 만료를 실제로 기다려서 4초쯤 걸린다. 하나라도 다르면 기대값과 실제 출력의 차이를 보여 주고 종료 코드 1로 끝난다. 다른 인터프리터는 `PYTHON=python3.12 bash tests/test_requirements.sh`처럼 고른다.
+
+실제 실행 결과(Python 3.13.12, 3.12.3에서 같음):
+
+```text
+== 1. 기본 자료구조 직접 구현 (내장 Key-Value 컬렉션으로 대체 금지)
+PASS  1-1 이중 연결 리스트: 노드 구조 prev / next / data
+PASS  1-1 이중 연결 리스트: insert_front / insert_back / remove_front / remove_back / remove_node / move_to_front
+PASS  1-1 이중 연결 리스트: 삽입/삭제/이동 O(1) (메서드 안에 반복문 없음)
+PASS  1-2 해시맵: put / get / remove / contains / keys / size
+PASS  1-2 해시맵: 해시 함수 직접 설계 (32bit FNV-1a, 같은 키는 늘 같은 값)
+PASS  1-2 해시맵: 충돌 해결은 체이닝 (같은 칸 = 이중 연결 리스트에 이어 붙임)
+PASS  1-2 해시맵: 로드 팩터 0.75 초과 시 버킷 2배 확장
+PASS  1-3 최소 힙: push / pop / peek / size, _heapify_up / _heapify_down, (expire_at, key) 원소
+PASS  1. 내장 Key-Value 컬렉션 대체 금지 (dict / set / collections 0건, AST 검사)
+== 2. String 타입 명령어 (Redis 스타일 출력)
+PASS  2-0 공통: 키 기반 명령 전 만료 확인 (만료된 키는 삭제 후 없는 키처럼)
+PASS  2-1 SET: 성공 시 OK, 덮어쓰면 기존 TTL 삭제, 메모리 초과 시 LRU 제거
+PASS  2-2 GET: 없으면 (nil), 있으면 "value", 반환 성공 시에만 LRU 갱신 (user:1 대신 user:2 제거)
+PASS  2-2 GET: 만료된 키는 (nil), 삭제되어 LRU에도 남지 않음
+PASS  2-3 DEL: 삭제 (integer) 1, 없으면 (integer) 0, 다시 SET해도 예전 TTL 없음
+PASS  2-3 DEL: 데이터·LRU 구조에서 함께 제거, TTL 힙 기록은 다음 정리 때 제거
+PASS  2-4 EXISTS: 있으면 (integer) 1, 없으면 (integer) 0
+PASS  2-5 DBSIZE: 저장된 키 개수 (integer) N
+PASS  2-6 KEYS: 배열 형태로 전체 키, 없으면 (empty array)
+== 3. 메모리 관리 + LRU 자동 제거
+PASS  3-1 CONFIG SET maxmemory: 0 이상 정수, 0은 무제한, 성공 시 OK, 정수 오류는 표준 에러
+PASS  3-2 INFO memory: used_memory / maxmemory / evicted_keys 3항목
+PASS  3-3 used_memory 공식: Σ(len(utf8(key)) + len(utf8(value))), 덮어쓰기·DEL 때 갱신
+PASS  3-4 LRU 제거 규칙: SET 뒤 초과하면 LRU부터 제거, evicted_keys 누적 (미션 예시)
+PASS  3-4 LRU 제거 규칙: maxmemory 이하가 될 때까지 여러 개 제거
+PASS  3-4 LRU 제거 규칙: 단일 엔트리가 maxmemory 초과면 저장하지 않고 OOM
+== 4. TTL 관리 (힙 기반)
+PASS  4-1 EXPIRE: 없는 키 (integer) 0, 정상 설정 (integer) 1, 0 이하는 즉시 만료 (integer) 1
+PASS  4-2 TTL: 없는 키 -2, 만료 없음 -1, 만료 있으면 남은 초 (EXPIRE 3 직후 2)
+PASS  4-3 엣지: 만료된 키는 GET 때 삭제 후 (nil), 이후 TTL -2
+PASS  4-3 엣지: SET 덮어쓰기는 TTL 초기화, 없는 키 EXPIRE는 0, DEL은 TTL까지 제거
+PASS  4-4 힙으로 가장 빠른 만료를 바로 찾음 (다시 EXPIRE한 예전 기록은 무시)
+== 5. 에러 처리 표준 + CLI 인터페이스
+PASS  5-1 CLI: mini-redis> 프롬프트, 입력을 읽어 파싱·실행을 반복
+PASS  5-1 CLI: exit 또는 quit으로 종료 (종료 뒤 줄은 실행 안 함)
+PASS  5-2 에러 출력 표준: 잘못된 명령 / 인자 개수 / 정수 파싱 / OOM
+PASS  5-3 값 파싱: 큰따옴표 값, 공백 없는 값, 따옴표 안 공백 (닫히지 않은 따옴표는 에러 후 계속)
+
+결과: PASS 33, FAIL 0
+```
 
 ### 금지 자료형 미사용 확인
 
